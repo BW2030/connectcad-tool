@@ -224,6 +224,8 @@ async def extract(req: ExtractRequest):
 
     try:
         device = extract_device_data(page_text, api_key)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     except Exception:
         logger.exception("Claude-Extraktion fehlgeschlagen")
         raise HTTPException(500, "Extraktion fehlgeschlagen. Bitte erneut versuchen.")

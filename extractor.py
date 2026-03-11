@@ -40,20 +40,34 @@ def extract_device_data(page_text: str, api_key: str) -> dict:
     """Call Claude API to extract structured device data from page text."""
     client = anthropic.Anthropic(api_key=api_key)
 
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=2048,
-        system=SYSTEM_PROMPT,
-        messages=[
-            {"role": "user", "content": USER_TEMPLATE.format(text=page_text)}
-        ],
-    )
+    try:
+        message = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2048,
+            system=SYSTEM_PROMPT,
+            messages=[
+                {"role": "user", "content": USER_TEMPLATE.format(text=page_text)}
+            ],
+        )
+    except anthropic.AuthenticationError:
+        raise ValueError("Ungültiger API Key. Bitte prüfe deinen Anthropic API Key.")
+    except anthropic.BadRequestError as e:
+        msg = str(e)
+        if "credit balance" in msg or "too low" in msg:
+            raise ValueError(
+                "Kein Guthaben auf dem Anthropic-Konto. "
+                "Bitte unter console.anthropic.com/settings/billing Credits kaufen."
+            )
+        raise ValueError(f"API Fehler: {msg[:200]}")
+    except anthropic.RateLimitError:
+        raise ValueError("Rate Limit erreicht. Bitte kurz warten und erneut versuchen.")
+    except Exception as e:
+        raise ValueError(f"Claude API nicht erreichbar: {e}")
 
     raw = message.content[0].text.strip()
-    # Extract JSON even if Claude wraps it in markdown
     json_match = re.search(r"\{[\s\S]*\}", raw)
     if not json_match:
-        raise ValueError(f"No JSON found in Claude response: {raw[:200]}")
+        raise ValueError(f"Kein JSON in Claude-Antwort gefunden: {raw[:200]}")
 
     data = json.loads(json_match.group())
     return _validate_and_normalize(data)
