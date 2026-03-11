@@ -11,34 +11,25 @@ BLOCKED_DOMAINS = {
     "ebay.com", "ebay.de", "walmart.com", "bestbuy.com",
 }
 
-# Realistischer Browser-Header-Pool
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 ]
 
 TIMEOUT = 20.0
 
 
-def _browser_headers(url: str = "") -> dict:
-    """Vollständige Browser-ähnliche Header um Blocking zu vermeiden."""
-    host = urlparse(url).netloc if url else ""
+def _browser_headers() -> dict:
+    """Browser-ähnliche Headers — KEIN brotli (br) da httpx es nicht dekodiert)."""
     return {
         "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Encoding": "gzip, deflate",   # kein br → httpx dekodiert gzip/deflate nativ
         "DNT": "1",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Cache-Control": "max-age=0",
-        **({"Referer": f"https://www.google.com/search?q={quote_plus(host)}"} if host else {}),
     }
 
 
@@ -47,43 +38,82 @@ def _is_blocked_domain(url: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in BLOCKED_DOMAINS)
 
 
+# ── Suche ─────────────────────────────────────────────────────────────────────
+
 async def search_duckduckgo(query: str, max_results: int = 5) -> list[dict]:
-    """Search DuckDuckGo HTML, filtert bekannte Blocker-Seiten."""
-    url = f"https://html.duckduckgo.com/html/?q={quote_plus(query + ' specifications site specs')}"
-    async with httpx.AsyncClient(headers=_browser_headers(), timeout=TIMEOUT, follow_redirects=True) as client:
+    """DuckDuckGo Lite — einfacheres HTML, weniger Bot-Detection."""
+    url = f"https://lite.duckduckgo.com/lite/?q={quote_plus(query + ' specifications')}"
+    async with httpx.AsyncClient(
+        headers=_browser_headers(), timeout=TIMEOUT, follow_redirects=True
+    ) as client:
         resp = await client.get(url)
         resp.raise_for_status()
 
     soup = BeautifulSoup(resp.text, "lxml")
     results = []
-    for result in soup.select(".result"):
+
+    # DuckDuckGo Lite: Ergebnisse in <a class="result-link"> + <td class="result-snippet">
+    links    = soup.select("a.result-link")
+    snippets = soup.select("td.result-snippet")
+
+    for i, link in enumerate(links):
         if len(results) >= max_results:
             break
-        title_el = result.select_one(".result__title a")
-        snippet_el = result.select_one(".result__snippet")
-        if not title_el:
+        href = link.get("href", "")
+        if not href.startswith("http"):
             continue
-        href = title_el.get("href", "")
-        real_url = _extract_ddg_url(href)
-        if not real_url:
-            continue
-        # Bekannte Blocker-Domains überspringen
-        if _is_blocked_domain(real_url):
+        if _is_blocked_domain(href):
             continue
         results.append({
-            "title": title_el.get_text(strip=True),
-            "url": real_url,
-            "snippet": snippet_el.get_text(strip=True) if snippet_el else "",
+            "title":   link.get_text(strip=True),
+            "url":     href,
+            "snippet": snippets[i].get_text(strip=True) if i < len(snippets) else "",
+        })
+
+    # Fallback: Bing wenn DuckDuckGo leer
+    if not results:
+        results = await _search_bing(query, max_results)
+
+    return results
+
+
+async def _search_bing(query: str, max_results: int = 5) -> list[dict]:
+    """Bing HTML-Suche als Fallback."""
+    url = f"https://www.bing.com/search?q={quote_plus(query + ' specifications')}&count=10"
+    headers = _browser_headers()
+    headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+    async with httpx.AsyncClient(headers=headers, timeout=TIMEOUT, follow_redirects=True) as client:
+        resp = await client.get(url)
+        if resp.status_code != 200:
+            return []
+
+    soup = BeautifulSoup(resp.text, "lxml")
+    results = []
+    for item in soup.select("li.b_algo"):
+        if len(results) >= max_results:
+            break
+        a = item.select_one("h2 a")
+        snip = item.select_one(".b_caption p, p")
+        if not a:
+            continue
+        href = a.get("href", "")
+        if not href.startswith("http") or _is_blocked_domain(href):
+            continue
+        results.append({
+            "title":   a.get_text(strip=True),
+            "url":     href,
+            "snippet": snip.get_text(strip=True) if snip else "",
         })
     return results
 
 
 async def search_serpapi(query: str, api_key: str, max_results: int = 5) -> list[dict]:
-    """Search via SerpAPI (Google). Requires SERPAPI_KEY."""
+    """Search via SerpAPI (Google)."""
     params = {
         "q": query + " specifications",
         "api_key": api_key,
-        "num": max_results + 3,  # Mehr holen, da wir filtern
+        "num": max_results + 3,
         "engine": "google",
     }
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
@@ -99,28 +129,23 @@ async def search_serpapi(query: str, api_key: str, max_results: int = 5) -> list
         if _is_blocked_domain(url):
             continue
         results.append({
-            "title": item.get("title", ""),
-            "url": url,
+            "title":   item.get("title", ""),
+            "url":     url,
             "snippet": item.get("snippet", ""),
         })
     return results
 
 
+# ── Seiteninhalt abrufen ──────────────────────────────────────────────────────
+
 async def fetch_page_text(url: str) -> str:
-    """
-    Seite abrufen mit mehreren Fallback-Strategien:
-    1. Direkter Abruf mit Browser-Headern
-    2. Bei 403: Google Cache versuchen
-    3. Bei 403: Fehlermeldung mit Hinweis auf alternative Seite
-    """
-    # Direkter Versuch
+    """Produktseite abrufen. Bei 403 → Google Cache versuchen."""
     try:
         text = await _fetch_direct(url)
         if text and len(text) > 100:
             return text
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 403:
-            # Google Cache versuchen
             try:
                 text = await _fetch_google_cache(url)
                 if text and len(text) > 100:
@@ -128,14 +153,14 @@ async def fetch_page_text(url: str) -> str:
             except Exception:
                 pass
             raise ValueError(
-                f"Diese Seite blockiert automatische Anfragen (403 Forbidden).\n\n"
-                f"Bitte eine andere Seite wählen, z.B.:\n"
-                f"• Offizielle Herstellerseite (z.B. sony.com, yamaha.com)\n"
-                f"• Manuals.plus, manualslib.com\n"
-                f"• Sweetwater.com (meist zugänglich)\n"
-                f"• ProSoundWeb, AVNetwork, Crutchfield"
+                "Diese Seite blockiert automatische Anfragen (403 Forbidden).\n\n"
+                "Bitte eine andere Seite wählen, z.B.:\n"
+                "• Offizielle Herstellerseite (sony.com, yamaha.com)\n"
+                "• Sweetwater.com\n"
+                "• Manualslib.com\n"
+                "• ProSoundWeb, AVNetwork, Crutchfield"
             )
-        raise
+        raise ValueError(f"HTTP-Fehler: {e.response.status_code}")
     except Exception as e:
         raise ValueError(f"Seite konnte nicht geladen werden: {e}")
 
@@ -143,72 +168,50 @@ async def fetch_page_text(url: str) -> str:
 
 
 async def _fetch_direct(url: str) -> str:
-    """Direkter HTTP-Abruf mit realistischen Headern."""
-    headers = _browser_headers(url)
+    headers = _browser_headers()
+    headers["Referer"] = f"{urlparse(url).scheme}://{urlparse(url).netloc}/"
     async with httpx.AsyncClient(
-        headers=headers,
-        timeout=TIMEOUT,
-        follow_redirects=True,
-        # Cookie-Jar aktivieren für Seiten die Session-Cookies brauchen
-        cookies={},
+        headers=headers, timeout=TIMEOUT, follow_redirects=True,
     ) as client:
-        # Erst Startseite besuchen (simuliert echten Browser-Weg)
-        parsed = urlparse(url)
-        home = f"{parsed.scheme}://{parsed.netloc}"
+        # Startseite kurz besuchen (simuliert echten Browser)
+        home = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
         try:
             await client.get(home, timeout=8.0)
         except Exception:
             pass
-        await asyncio.sleep(random.uniform(0.3, 0.8))
-
+        await asyncio.sleep(random.uniform(0.2, 0.6))
         resp = await client.get(url)
         resp.raise_for_status()
-
+        # Encoding explizit setzen falls fehlt
+        if resp.encoding is None or resp.encoding.lower() in ("", "latin-1"):
+            resp.encoding = "utf-8"
     return _parse_html(resp.text)
 
 
 async def _fetch_google_cache(url: str) -> str:
-    """Google Cache als Fallback für geblockte Seiten."""
     cache_url = f"https://webcache.googleusercontent.com/search?q=cache:{quote_plus(url)}"
-    headers = _browser_headers()
-    async with httpx.AsyncClient(headers=headers, timeout=TIMEOUT, follow_redirects=True) as client:
+    async with httpx.AsyncClient(headers=_browser_headers(), timeout=TIMEOUT, follow_redirects=True) as client:
         resp = await client.get(cache_url)
         resp.raise_for_status()
     return _parse_html(resp.text)
 
 
 def _parse_html(html: str) -> str:
-    """HTML zu sauberem Text für Claude."""
     soup = BeautifulSoup(html, "lxml")
-
-    # Unnötige Tags entfernen
     for tag in soup(["script", "style", "nav", "footer", "header",
                      "aside", "noscript", "iframe", "svg", "form"]):
         tag.decompose()
-
-    # Beste Inhaltsregionen priorisieren
     for selector in [
         "main", "article",
         "[class*='spec']", "[class*='product']", "[id*='spec']", "[id*='product']",
-        "[class*='detail']", "[id*='detail']",
-        ".content", "#content", ".page-content",
+        "[class*='detail']", "[id*='detail']", ".content", "#content",
     ]:
         el = soup.select_one(selector)
         if el:
             text = el.get_text(separator="\n", strip=True)
             if len(text) > 300:
                 return _clean_text(text)
-
     return _clean_text(soup.get_text(separator="\n", strip=True))
-
-
-def _extract_ddg_url(href: str) -> str:
-    if href.startswith("http"):
-        return href
-    import re
-    from urllib.parse import unquote
-    match = re.search(r"uddg=([^&]+)", href)
-    return unquote(match.group(1)) if match else ""
 
 
 def _clean_text(text: str) -> str:
