@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ConnectCAD Device Tool</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f0f2f5;
+  color: #1a1a2e;
+  min-height: 100vh;
+}
+
+/* ── Header ── */
+header {
+  background: #1a1a2e;
+  color: white;
+  padding: 18px 32px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+header h1 { font-size: 1.15rem; font-weight: 700; }
+header p  { font-size: 0.8rem; opacity: .55; margin-top: 2px; }
+
+/* ── Layout ── */
+.page { max-width: 780px; margin: 0 auto; padding: 36px 16px 60px; }
+
+/* ── Steps ── */
+.step {
+  background: white;
+  border-radius: 12px;
+  padding: 28px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  transition: opacity .3s;
+}
+.step.locked { opacity: .4; pointer-events: none; }
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.step-num {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: #1a1a2e;
+  color: white;
+  font-weight: 700;
+  font-size: .9rem;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.step-num.done { background: #22c55e; }
+.step-title { font-weight: 700; font-size: 1rem; }
+.step-sub   { font-size: 0.8rem; color: #888; margin-top: 2px; }
+
+/* ── API Key ── */
+.key-row { display: flex; gap: 8px; }
+.key-row input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1.5px solid #ddd;
+  border-radius: 8px;
+  font-size: .9rem;
+  outline: none;
+  font-family: monospace;
+  color: #444;
+  transition: border-color .2s;
+}
+.key-row input:focus { border-color: #1a1a2e; }
+.key-saved {
+  font-size: .78rem;
+  color: #22c55e;
+  margin-top: 6px;
+  display: none;
+}
+
+/* ── Search ── */
+.search-box {
+  display: flex;
+  gap: 8px;
+}
+.search-box input {
+  flex: 1;
+  padding: 13px 16px;
+  border: 1.5px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color .2s;
+}
+.search-box input:focus { border-color: #1a1a2e; }
+.search-box input::placeholder { color: #bbb; }
+
+button {
+  padding: 12px 22px;
+  border: none;
+  border-radius: 8px;
+  font-size: .9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s, opacity .15s;
+  white-space: nowrap;
+}
+button:hover  { opacity: .88; }
+button:active { opacity: .75; }
+button:disabled { opacity: .35; cursor: not-allowed; }
+
+.btn-dark    { background: #1a1a2e; color: white; }
+.btn-green   { background: #22c55e; color: #000; }
+.btn-outline { background: white; color: #1a1a2e; border: 1.5px solid #ddd; }
+
+/* ── Results ── */
+.results { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.result-item {
+  border: 1.5px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 13px 16px;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.result-item:hover    { border-color: #1a1a2e; background: #fafafa; }
+.result-item.selected { border-color: #1a1a2e; background: #f0f2ff; }
+.result-title   { font-weight: 600; font-size: .9rem; margin-bottom: 3px; }
+.result-url     { font-size: .72rem; color: #2563eb; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result-snippet { font-size: .78rem; color: #777; }
+
+/* ── Device Fields ── */
+.fields-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.field label {
+  display: block;
+  font-size: .75rem;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 5px;
+}
+.field input, .field select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 7px;
+  font-size: .9rem;
+  outline: none;
+  transition: border-color .2s;
+  background: white;
+  color: #1a1a2e;
+}
+.field input:focus, .field select:focus { border-color: #1a1a2e; }
+
+/* ── Sockets Table ── */
+.sockets-label {
+  font-size: .75rem;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 8px;
+}
+.sockets-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+th {
+  text-align: left;
+  padding: 8px 10px;
+  background: #f5f5f5;
+  color: #888;
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-bottom: 1px solid #eee;
+}
+td { padding: 7px 10px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+td input, td select {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  font-size: .85rem;
+  outline: none;
+  background: white;
+}
+td input:focus, td select:focus { border-color: #1a1a2e; }
+.btn-del { background: #fee2e2; color: #dc2626; padding: 4px 10px; font-size: .75rem; border-radius: 5px; font-weight: 700; }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: .7rem; font-weight: 700; }
+.badge-IN  { background: #dcfce7; color: #15803d; }
+.badge-OUT { background: #fee2e2; color: #dc2626; }
+.badge-IO  { background: #dbeafe; color: #1d4ed8; }
+
+.add-btn { margin-top: 12px; font-size: .82rem; padding: 8px 16px; }
+
+/* ── Export Row ── */
+.export-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.qty-wrap { display: flex; align-items: center; gap: 8px; }
+.qty-wrap label { font-size: .85rem; color: #666; white-space: nowrap; }
+.qty-wrap input { width: 65px; padding: 8px 10px; border: 1.5px solid #ddd; border-radius: 7px; font-size: .9rem; outline: none; }
+
+/* ── Status ── */
+.status {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: .84rem;
+  margin-top: 12px;
+}
+.status-info    { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.status-error   { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.status-success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+
+/* ── Spinner ── */
+.spin { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.4); border-top-color: currentColor; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin-dark { border-color: rgba(0,0,0,.15); border-top-color: #1a1a2e; }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+    <rect width="36" height="36" rx="8" fill="white" fill-opacity=".1"/>
+    <rect x="8" y="10" width="20" height="16" rx="2" stroke="white" stroke-width="1.8"/>
+    <path d="M12 14h12M12 18h9M12 22h5" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+  </svg>
+  <div>
+    <h1>ConnectCAD Device Tool</h1>
+    <p>Gerät suchen → Daten extrahieren → Worksheet exportieren</p>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- ── Step 1: API Key ─────────────────────────────────────── -->
+  <div class="step" id="step-key">
+    <div class="step-header">
+      <div class="step-num" id="num-key">🔑</div>
+      <div>
+        <div class="step-title">Anthropic API Key</div>
+        <div class="step-sub">Einmalig eintragen – wird lokal gespeichert</div>
+      </div>
+    </div>
+    <div class="key-row">
+      <input type="password" id="api-key-input" placeholder="sk-ant-api03-..." autocomplete="off">
+      <button class="btn-dark" onclick="saveKey()">Speichern</button>
+    </div>
+    <div class="key-saved" id="key-saved">✓ API Key gespeichert</div>
+  </div>
+
+  <!-- ── Step 2: Search ──────────────────────────────────────── -->
+  <div class="step" id="step-search">
+    <div class="step-header">
+      <div class="step-num" id="num-search">1</div>
+      <div>
+        <div class="step-title">Gerät suchen</div>
+        <div class="step-sub">Produktbezeichnung eingeben, z.B. "Yamaha QL5" oder "Sony BRC-X400"</div>
+      </div>
+    </div>
+    <div class="search-box">
+      <input type="text" id="search-input" placeholder="Gerät suchen…" onkeydown="if(event.key==='Enter')doSearch()">
+      <button class="btn-dark" id="search-btn" onclick="doSearch()">Suchen</button>
+    </div>
+    <div id="search-status"></div>
+    <div class="results" id="results"></div>
+  </div>
+
+  <!-- ── Step 3: Extract ─────────────────────────────────────── -->
+  <div class="step locked" id="step-extract">
+    <div class="step-header">
+      <div class="step-num" id="num-extract">2</div>
+      <div>
+        <div class="step-title">Daten extrahieren</div>
+        <div class="step-sub" id="extract-sub">Zuerst eine Produktseite auswählen</div>
+      </div>
+    </div>
+    <button class="btn-dark" id="extract-btn" onclick="doExtract()">
+      Mit Claude analysieren
+    </button>
+    <div id="extract-status"></div>
+  </div>
+
+  <!-- ── Step 4: Preview + Export ───────────────────────────── -->
+  <div class="step locked" id="step-export">
+    <div class="step-header">
+      <div class="step-num" id="num-export">3</div>
+      <div>
+        <div class="step-title">Vorschau &amp; Export</div>
+        <div class="step-sub">Felder prüfen, ggf. korrigieren, dann herunterladen</div>
+      </div>
+    </div>
+
+    <div class="fields-grid" id="device-fields"></div>
+
+    <div class="sockets-label">Sockets / Anschlüsse</div>
+    <div class="sockets-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Richtung</th><th>Signal</th><th>Connector</th><th>Label</th><th>Qty</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="sockets-body"></tbody>
+      </table>
+    </div>
+    <button class="btn-outline add-btn" onclick="addSocket()">+ Socket hinzufügen</button>
+
+    <hr style="border:none;border-top:1px solid #eee;margin:24px 0 20px">
+
+    <div class="fields-grid" style="margin-bottom:16px">
+      <div class="field">
+        <label>Anzahl (Qty)</label>
+        <input type="number" id="qty" value="1" min="1" max="999">
+      </div>
+      <div class="field">
+        <label>Raum / Room (optional)</label>
+        <input type="text" id="room" placeholder="z.B. Regie">
+      </div>
+      <div class="field">
+        <label>Rack (optional)</label>
+        <input type="text" id="rack" placeholder="z.B. Rack 1">
+      </div>
+      <div class="field">
+        <label>Rack U (optional)</label>
+        <input type="text" id="rack_u" placeholder="z.B. 3">
+      </div>
+    </div>
+
+    <div class="export-row">
+      <button class="btn-dark" onclick="doExport('csv')">⬇ CSV für ConnectCAD 2026</button>
+      <button class="btn-outline" onclick="doExport('xlsx')">⬇ Excel (.xlsx)</button>
+    </div>
+    <p style="font-size:.75rem;color:#aaa;margin-top:8px">In Vectorworks: <b>File → Import → Import Worksheet</b> → dann <b>ConnectCAD → Update → Create Devices from Worksheet</b></p>
+    <div id="export-status"></div>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+// ── State ──────────────────────────────────────────────────────
+let apiKey = localStorage.getItem('cc_api_key') || '';
+let selectedUrl = null;
+let device = null;
+
+const SIGNALS    = ['Audio','Video','Data','Power','Control','Networking','AES','MADI','DANTE','AVB','Other'];
+const CONNECTORS = ['XLR','TRS','TS','RCA','BNC','HDMI','DisplayPort','VGA','DVI','RJ45','USB-A','USB-B','USB-C','SFP','DB9','DB25','Speakon','etherCON','opticalCON','SC','LC','IEC','powerCON','Other'];
+const DIRS       = ['IN','OUT','IO'];
+
+// ── Boot ───────────────────────────────────────────────────────
+if (apiKey) {
+  document.getElementById('api-key-input').value = '••••••••••••••••';
+  document.getElementById('key-saved').style.display = 'block';
+  document.getElementById('num-key').textContent = '✓';
+  document.getElementById('num-key').classList.add('done');
+}
+
+// ── API Key ────────────────────────────────────────────────────
+function saveKey() {
+  const v = document.getElementById('api-key-input').value.trim();
+  if (!v || v.startsWith('•')) return;
+  apiKey = v;
+  localStorage.setItem('cc_api_key', v);
+  document.getElementById('key-saved').style.display = 'block';
+  document.getElementById('num-key').textContent = '✓';
+  document.getElementById('num-key').classList.add('done');
+}
+
+// ── Search ─────────────────────────────────────────────────────
+async function doSearch() {
+  const q = document.getElementById('search-input').value.trim();
+  if (!q) return;
+  const btn = document.getElementById('search-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin spin-dark"></span>Suche…';
+  setStatus('search-status', '');
+  document.getElementById('results').innerHTML = '';
+  lock('step-extract'); lock('step-export');
+
+  try {
+    const r = await fetch('/search?' + new URLSearchParams({q}));
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail);
+
+    if (!d.results.length) {
+      setStatus('search-status', 'Keine Ergebnisse. Anderen Suchbegriff versuchen.', 'error');
+    } else {
+      const box = document.getElementById('results');
+      d.results.forEach(res => {
+        const el = document.createElement('div');
+        el.className = 'result-item';
+        el.innerHTML = `
+          <div class="result-title">${esc(res.title)}</div>
+          <div class="result-url">${esc(res.url)}</div>
+          <div class="result-snippet">${esc(res.snippet)}</div>
+        `;
+        el.onclick = () => pickResult(el, res.url);
+        box.appendChild(el);
+      });
+    }
+  } catch(e) {
+    setStatus('search-status', 'Fehler: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Suchen';
+  }
+}
+
+function pickResult(el, url) {
+  document.querySelectorAll('.result-item').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedUrl = url;
+  document.getElementById('extract-sub').textContent = url;
+  unlock('step-extract');
+  setStatus('extract-status', '');
+}
+
+// ── Extract ────────────────────────────────────────────────────
+async function doExtract() {
+  if (!apiKey) { alert('Bitte zuerst den Anthropic API Key eingeben.'); return; }
+  const btn = document.getElementById('extract-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>Seite wird analysiert…';
+  setStatus('extract-status', '');
+
+  try {
+    const r = await fetch('/extract', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ url: selectedUrl, anthropic_api_key: apiKey }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail);
+    device = d.device;
+    renderPreview(device);
+    unlock('step-export');
+    setStatus('extract-status', '✓ Fertig! Felder prüfen und bei Bedarf korrigieren.', 'success');
+    document.getElementById('num-extract').classList.add('done');
+    document.getElementById('num-extract').textContent = '✓';
+  } catch(e) {
+    setStatus('extract-status', 'Fehler: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Mit Claude analysieren';
+  }
+}
+
+// ── Preview ────────────────────────────────────────────────────
+function renderPreview(dev) {
+  const grid = document.getElementById('device-fields');
+  grid.innerHTML = '';
+  const fields = [
+    {key:'make',       label:'Hersteller'},
+    {key:'model',      label:'Modell'},
+    {key:'rack_units', label:'Höhe (RU)',    type:'number'},
+    {key:'width_mm',   label:'Breite (mm)', type:'number'},
+    {key:'depth_mm',   label:'Tiefe (mm)',  type:'number'},
+    {key:'device_type',label:'Gerätetyp',   type:'select', opts:['Physical','Virtual']},
+  ];
+  fields.forEach(f => {
+    const val = dev[f.key] ?? '';
+    const div = document.createElement('div');
+    div.className = 'field';
+    if (f.type === 'select') {
+      div.innerHTML = `<label>${f.label}</label>
+        <select onchange="device['${f.key}']=this.value">
+          ${f.opts.map(o=>`<option ${o===val?'selected':''}>${o}</option>`).join('')}
+        </select>`;
+    } else {
+      div.innerHTML = `<label>${f.label}</label>
+        <input type="${f.type||'text'}" value="${escA(val)}"
+          oninput="device['${f.key}']=this.value">`;
+    }
+    grid.appendChild(div);
+  });
+  renderSockets(dev.sockets || []);
+}
+
+function renderSockets(sockets) {
+  const tbody = document.getElementById('sockets-body');
+  tbody.innerHTML = '';
+  sockets.forEach((s, i) => appendSocketRow(s, i));
+}
+
+function appendSocketRow(s, i) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><select onchange="device.sockets[${i}].direction=this.value">
+      ${DIRS.map(d=>`<option ${d===s.direction?'selected':''}>${d}</option>`).join('')}
+    </select></td>
+    <td><select onchange="device.sockets[${i}].signal=this.value">
+      ${SIGNALS.map(v=>`<option ${v===s.signal?'selected':''}>${v}</option>`).join('')}
+    </select></td>
+    <td><select onchange="device.sockets[${i}].connector=this.value">
+      ${CONNECTORS.map(c=>`<option ${c===s.connector?'selected':''}>${c}</option>`).join('')}
+    </select></td>
+    <td><input type="text" value="${escA(s.label||'')}" oninput="device.sockets[${i}].label=this.value" placeholder="Name"></td>
+    <td><input type="number" value="${s.qty||1}" min="1" max="64" style="width:55px"
+      oninput="device.sockets[${i}].qty=parseInt(this.value)||1"></td>
+    <td><button class="btn-del" onclick="removeSock(${i})">✕</button></td>
+  `;
+  document.getElementById('sockets-body').appendChild(tr);
+}
+
+function addSocket() {
+  if (!device) return;
+  if (!device.sockets) device.sockets = [];
+  const s = {direction:'IO', signal:'Audio', connector:'XLR', label:'', qty:1};
+  device.sockets.push(s);
+  appendSocketRow(s, device.sockets.length - 1);
+}
+
+function removeSock(i) {
+  device.sockets.splice(i, 1);
+  renderSockets(device.sockets);
+}
+
+// ── Export ─────────────────────────────────────────────────────
+async function doExport(fmt) {
+  const qty  = parseInt(document.getElementById('qty').value) || 1;
+  const room  = document.getElementById('room').value.trim();
+  const rack  = document.getElementById('rack').value.trim();
+  const rack_u = document.getElementById('rack_u').value.trim();
+  setStatus('export-status', '<span class="spin spin-dark"></span>Erstelle Datei…');
+  try {
+    const r = await fetch('/export', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({device, qty, room, rack, rack_u, format: fmt}),
+    });
+    if (!r.ok) { const d=await r.json(); throw new Error(d.detail); }
+    const blob = await r.blob();
+    const name = fmt==='xlsx' ? 'connectcad_import.xlsx' : fmt==='csv' ? 'connectcad_import.csv' : 'connectcad_import.txt';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name; a.click();
+    setStatus('export-status', `✓ "${name}" wurde heruntergeladen.`, 'success');
+    document.getElementById('num-export').classList.add('done');
+    document.getElementById('num-export').textContent = '✓';
+  } catch(e) {
+    setStatus('export-status', 'Fehler: ' + e.message, 'error');
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────
+function lock(id)   { document.getElementById(id).classList.add('locked'); }
+function unlock(id) { document.getElementById(id).classList.remove('locked'); }
+
+function setStatus(id, msg, type) {
+  const el = document.getElementById(id);
+  if (!msg) { el.innerHTML = ''; return; }
+  const cls = type ? `status status-${type}` : 'status status-info';
+  el.innerHTML = `<div class="${cls}">${msg}</div>`;
+}
+
+function esc(s)  { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escA(s) { return String(s).replace(/"/g,'&quot;'); }
+</script>
+</body>
+</html>

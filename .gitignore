@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+*.xlsx
+*.csv
+*.txt
+!requirements.txt
+!.env.example
