@@ -419,11 +419,16 @@ async function doSearch() {
       d.results.forEach(res => {
         const el = document.createElement('div');
         el.className = 'result-item';
-        el.innerHTML = `
-          <div class="result-title">${esc(res.title)}</div>
-          <div class="result-url">${esc(res.url)}</div>
-          <div class="result-snippet">${esc(res.snippet)}</div>
-        `;
+        const title = document.createElement('div');
+        title.className = 'result-title';
+        title.textContent = res.title;
+        const url = document.createElement('div');
+        url.className = 'result-url';
+        url.textContent = res.url;
+        const snip = document.createElement('div');
+        snip.className = 'result-snippet';
+        snip.textContent = res.snippet;
+        el.append(title, url, snip);
         el.onclick = () => pickResult(el, res.url);
         box.appendChild(el);
       });
@@ -494,15 +499,28 @@ function renderPreview(dev) {
     const val = dev[f.key] ?? '';
     const div = document.createElement('div');
     div.className = 'field';
+    const label = document.createElement('label');
+    label.textContent = f.label;
+    div.appendChild(label);
     if (f.type === 'select') {
-      div.innerHTML = `<label>${f.label}</label>
-        <select onchange="device['${f.key}']=this.value">
-          ${f.opts.map(o=>`<option ${o===val?'selected':''}>${o}</option>`).join('')}
-        </select>`;
+      const sel = document.createElement('select');
+      f.opts.forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o;
+        opt.textContent = o;
+        if (o === String(val)) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      const key = f.key;
+      sel.addEventListener('change', () => { device[key] = sel.value; });
+      div.appendChild(sel);
     } else {
-      div.innerHTML = `<label>${f.label}</label>
-        <input type="${f.type||'text'}" value="${escA(val)}"
-          oninput="device['${f.key}']=this.value">`;
+      const inp = document.createElement('input');
+      inp.type = f.type || 'text';
+      inp.value = String(val);
+      const key = f.key;
+      inp.addEventListener('input', () => { device[key] = inp.value; });
+      div.appendChild(inp);
     }
     grid.appendChild(div);
   });
@@ -515,23 +533,51 @@ function renderSockets(sockets) {
   sockets.forEach((s, i) => appendSocketRow(s, i));
 }
 
+function _makeSelect(options, current, onChange) {
+  const sel = document.createElement('select');
+  options.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o; opt.textContent = o;
+    if (o === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  sel.addEventListener('change', () => onChange(sel.value));
+  return sel;
+}
+
 function appendSocketRow(s, i) {
   const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td><select onchange="device.sockets[${i}].direction=this.value">
-      ${DIRS.map(d=>`<option ${d===s.direction?'selected':''}>${d}</option>`).join('')}
-    </select></td>
-    <td><select onchange="device.sockets[${i}].signal=this.value">
-      ${SIGNALS.map(v=>`<option ${v===s.signal?'selected':''}>${v}</option>`).join('')}
-    </select></td>
-    <td><select onchange="device.sockets[${i}].connector=this.value">
-      ${CONNECTORS.map(c=>`<option ${c===s.connector?'selected':''}>${c}</option>`).join('')}
-    </select></td>
-    <td><input type="text" value="${escA(s.label||'')}" oninput="device.sockets[${i}].label=this.value" placeholder="Name"></td>
-    <td><input type="number" value="${s.qty||1}" min="1" max="64" style="width:55px"
-      oninput="device.sockets[${i}].qty=parseInt(this.value)||1"></td>
-    <td><button class="btn-del" onclick="removeSock(${i})">✕</button></td>
-  `;
+
+  const cells = [
+    _makeSelect(DIRS,       s.direction, v => { device.sockets[i].direction = v; }),
+    _makeSelect(SIGNALS,    s.signal,    v => { device.sockets[i].signal    = v; }),
+    _makeSelect(CONNECTORS, s.connector, v => { device.sockets[i].connector = v; }),
+  ];
+
+  const labelInp = document.createElement('input');
+  labelInp.type = 'text';
+  labelInp.value = s.label || '';
+  labelInp.placeholder = 'Name';
+  labelInp.addEventListener('input', () => { device.sockets[i].label = labelInp.value; });
+
+  const qtyInp = document.createElement('input');
+  qtyInp.type = 'number';
+  qtyInp.value = s.qty || 1;
+  qtyInp.min = 1; qtyInp.max = 64;
+  qtyInp.style.width = '55px';
+  qtyInp.addEventListener('input', () => { device.sockets[i].qty = parseInt(qtyInp.value) || 1; });
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'btn-del';
+  delBtn.textContent = '✕';
+  delBtn.addEventListener('click', () => removeSock(i));
+
+  [...cells, labelInp, qtyInp, delBtn].forEach(el => {
+    const td = document.createElement('td');
+    td.appendChild(el);
+    tr.appendChild(td);
+  });
+
   document.getElementById('sockets-body').appendChild(tr);
 }
 

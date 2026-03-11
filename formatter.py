@@ -15,18 +15,26 @@ from openpyxl.styles import Font, PatternFill, Alignment
 COLUMNS = ["Make", "Model", "Qty", "Name", "Room", "Rack", "Rack U"]
 
 
+def _safe(value) -> str:
+    """CSV-Injection verhindern: Formel-Präfixe entschärfen."""
+    s = str(value) if value is not None else ""
+    if s and s[0] in ("=", "+", "@", "-", "\t", "\r"):
+        s = "'" + s  # Excel interpretiert das nicht als Formel
+    return s
+
+
 def build_rows(device: dict, qty: int = 1, room: str = "", rack: str = "", rack_u: str = "") -> list[list[str]]:
     """Build ConnectCAD 2026 worksheet rows (header + data)."""
     name_tag = f"{device.get('make', '')} {device.get('model', '')}".strip()
     header = COLUMNS
     data_row = [
-        device.get("make", ""),
-        device.get("model", ""),
-        str(qty),
-        name_tag,
-        room,
-        rack,
-        rack_u,
+        _safe(device.get("make", "")),
+        _safe(device.get("model", "")),
+        str(max(1, min(int(qty), 9999))),
+        _safe(name_tag),
+        _safe(room),
+        _safe(rack),
+        _safe(rack_u),
     ]
     return [header, data_row]
 
