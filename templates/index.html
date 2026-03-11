@@ -354,23 +354,46 @@ const SIGNALS    = ['Audio','Video','Data','Power','Control','Networking','AES',
 const CONNECTORS = ['XLR','TRS','TS','RCA','BNC','HDMI','DisplayPort','VGA','DVI','RJ45','USB-A','USB-B','USB-C','SFP','DB9','DB25','Speakon','etherCON','opticalCON','SC','LC','IEC','powerCON','Other'];
 const DIRS       = ['IN','OUT','IO'];
 
-// ── Boot ───────────────────────────────────────────────────────
-if (apiKey) {
-  document.getElementById('api-key-input').value = '••••••••••••••••';
-  document.getElementById('key-saved').style.display = 'block';
-  document.getElementById('num-key').textContent = '✓';
-  document.getElementById('num-key').classList.add('done');
-}
+// ── Boot: Key vom Server laden ─────────────────────────────────
+(async () => {
+  try {
+    const r = await fetch('/keycheck');
+    const d = await r.json();
+    if (d.saved) {
+      apiKey = '__server__';
+      document.getElementById('api-key-input').value = d.preview;
+      document.getElementById('api-key-input').disabled = true;
+      document.getElementById('key-saved').textContent = '✓ API Key gespeichert (in .env)';
+      document.getElementById('key-saved').style.display = 'block';
+      document.getElementById('num-key').textContent = '✓';
+      document.getElementById('num-key').classList.add('done');
+    }
+  } catch(e) {}
+})();
 
 // ── API Key ────────────────────────────────────────────────────
-function saveKey() {
-  const v = document.getElementById('api-key-input').value.trim();
-  if (!v || v.startsWith('•')) return;
-  apiKey = v;
-  localStorage.setItem('cc_api_key', v);
-  document.getElementById('key-saved').style.display = 'block';
-  document.getElementById('num-key').textContent = '✓';
-  document.getElementById('num-key').classList.add('done');
+async function saveKey() {
+  const input = document.getElementById('api-key-input');
+  const v = input.value.trim();
+  if (!v || v.includes('•')) return;
+  try {
+    const r = await fetch('/savekey', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({anthropic_api_key: v}),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail);
+    apiKey = '__server__';
+    input.value = v.slice(0,8) + '••••••••';
+    input.disabled = true;
+    document.getElementById('key-saved').textContent = '✓ API Key dauerhaft gespeichert (in .env)';
+    document.getElementById('key-saved').style.display = 'block';
+    document.getElementById('num-key').textContent = '✓';
+    document.getElementById('num-key').classList.add('done');
+  } catch(e) {
+    alert('Fehler: ' + e.message);
+  }
 }
 
 // ── Search ─────────────────────────────────────────────────────
@@ -434,7 +457,10 @@ async function doExtract() {
     const r = await fetch('/extract', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ url: selectedUrl, anthropic_api_key: apiKey }),
+      body: JSON.stringify({
+        url: selectedUrl,
+        anthropic_api_key: apiKey === '__server__' ? null : apiKey,
+      }),
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail);

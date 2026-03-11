@@ -3,9 +3,9 @@ import os
 import json
 from typing import Optional
 
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, Response, FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -22,6 +22,10 @@ app = FastAPI(title="ConnectCAD Device Tool", version="1.0.0")
 
 
 # ── Models ──────────────────────────────────────────────────────────────────
+
+class SaveKeyRequest(BaseModel):
+    anthropic_api_key: str
+
 
 class ExtractRequest(BaseModel):
     url: str
@@ -43,6 +47,33 @@ class ExportRequest(BaseModel):
 async def root():
     with open("templates/index.html", encoding="utf-8") as f:
         return f.read()
+
+
+@app.get("/keycheck")
+async def keycheck():
+    """Gibt gespeicherten API Key zurück (nur ob vorhanden + erste 8 Zeichen)."""
+    key = ANTHROPIC_API_KEY
+    if key:
+        return {"saved": True, "preview": key[:8] + "••••••••"}
+    return {"saved": False, "preview": ""}
+
+
+@app.post("/savekey")
+async def savekey(req: SaveKeyRequest):
+    """Speichert den API Key dauerhaft in der .env-Datei."""
+    global ANTHROPIC_API_KEY
+    if not req.anthropic_api_key.startswith("sk-"):
+        raise HTTPException(400, "Ungültiger API Key (muss mit 'sk-' beginnen)")
+
+    env_path = Path(".env")
+    # .env lesen oder neu anlegen
+    lines = env_path.read_text().splitlines() if env_path.exists() else []
+    new_lines = [l for l in lines if not l.startswith("ANTHROPIC_API_KEY=")]
+    new_lines.append(f"ANTHROPIC_API_KEY={req.anthropic_api_key}")
+    env_path.write_text("\n".join(new_lines) + "\n")
+
+    ANTHROPIC_API_KEY = req.anthropic_api_key
+    return {"ok": True}
 
 
 @app.get("/search")
