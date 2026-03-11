@@ -251,9 +251,10 @@ td input:focus, td select:focus { border-color: #1a1a2e; }
     </div>
     <div class="key-row">
       <input type="password" id="api-key-input" placeholder="sk-ant-api03-..." autocomplete="off">
-      <button class="btn-dark" onclick="saveKey()">Speichern</button>
+      <button class="btn-dark" id="save-btn" onclick="saveKey()">Speichern</button>
+      <button class="btn-outline" id="change-btn" onclick="changeKey()" style="display:none">Ändern</button>
     </div>
-    <div class="key-saved" id="key-saved">✓ API Key gespeichert</div>
+    <div class="key-saved" id="key-saved">✓ API Key gespeichert (in .env)</div>
   </div>
 
   <!-- ── Step 2: Search ──────────────────────────────────────── -->
@@ -361,8 +362,10 @@ const DIRS       = ['IN','OUT','IO'];
     const d = await r.json();
     if (d.saved) {
       apiKey = '__server__';
-      document.getElementById('api-key-input').value = d.preview;
+      document.getElementById('api-key-input').value = '••••••••••••••••';
       document.getElementById('api-key-input').disabled = true;
+      document.getElementById('save-btn').style.display = 'none';
+      document.getElementById('change-btn').style.display = '';
       document.getElementById('key-saved').textContent = '✓ API Key gespeichert (in .env)';
       document.getElementById('key-saved').style.display = 'block';
       document.getElementById('num-key').textContent = '✓';
@@ -385,8 +388,10 @@ async function saveKey() {
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail);
     apiKey = '__server__';
-    input.value = v.slice(0,8) + '••••••••';
+    input.value = '••••••••••••••••';
     input.disabled = true;
+    document.getElementById('save-btn').style.display = 'none';
+    document.getElementById('change-btn').style.display = '';
     document.getElementById('key-saved').textContent = '✓ API Key dauerhaft gespeichert (in .env)';
     document.getElementById('key-saved').style.display = 'block';
     document.getElementById('num-key').textContent = '✓';
@@ -394,6 +399,19 @@ async function saveKey() {
   } catch(e) {
     alert('Fehler: ' + e.message);
   }
+}
+
+function changeKey() {
+  const input = document.getElementById('api-key-input');
+  input.value = '';
+  input.disabled = false;
+  input.focus();
+  document.getElementById('save-btn').style.display = '';
+  document.getElementById('change-btn').style.display = 'none';
+  document.getElementById('key-saved').style.display = 'none';
+  document.getElementById('num-key').textContent = '🔑';
+  document.getElementById('num-key').classList.remove('done');
+  apiKey = '';
 }
 
 // ── Search ─────────────────────────────────────────────────────
