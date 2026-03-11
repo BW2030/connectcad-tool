@@ -75,11 +75,13 @@ async def extract(req: ExtractRequest):
 
     try:
         page_text = await fetch_page_text(req.url)
+    except ValueError as e:
+        raise HTTPException(403, str(e))
     except Exception as e:
-        raise HTTPException(502, f"Could not fetch page: {e}")
+        raise HTTPException(502, f"Seite konnte nicht geladen werden: {e}")
 
     if len(page_text) < 50:
-        raise HTTPException(422, "Page content too short to extract data from.")
+        raise HTTPException(422, "Seiteninhalt zu kurz. Bitte eine andere Seite wählen.")
 
     try:
         device = extract_device_data(page_text, api_key)
